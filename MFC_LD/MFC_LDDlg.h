@@ -3,8 +3,8 @@
 //
 
 #pragma once
-#include "afxwin.h"
 #define _USE_MATH_DEFINES
+#include "afxwin.h"
 #include"math.h"
 #include"cv.h"
 #include"highgui.h"
@@ -61,6 +61,7 @@ public:
 	void LineCompensate(cv::Mat src, cv::Mat & dst, uint16_t thrshold);
 	string LineClassify(cv::Mat src, cv::Point Center, double Area);
 	void HoughLineDetection(cv::Mat src, cv::Mat & dst);
+	std::string GetColor(cv::Mat img);
 	std::string GetColor(cv::Mat img,bool Night);
 	void ImgText(IplImage * img, std::string text, int x, int y);
 

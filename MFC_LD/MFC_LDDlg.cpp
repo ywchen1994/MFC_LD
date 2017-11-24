@@ -104,11 +104,6 @@ void CMFC_LDDlg::OnBnClickedBtnopenfile()
 }
 void CMFC_LDDlg::ShowImage(cv::Mat Image, CWnd* pWnd)
 {
-	//Windows中顯示圖像存在一個4位元組對齊的問題, 也就是每一行的位元組數必須是4的倍數.
-	//而Mat的資料是連續存儲的.一般Mat的資料格式為BGR, 也就是一個圖元3個位元組, 假設我的圖片一行有5個圖元, 那一行就是15個位元組, 這不符合MFC的資料對齊方式,
-	//如果我們直接把Mat的data加個資料頭再顯示出來就可能會出錯.
-	//手動4位元組對齊, 就是計算每行的位元組是不是4的倍數, 不是的話, 在後面補0
-	//但是我們把圖片轉成RGBA之後, 一個圖元就是4個位元組, 不管你一行幾個圖元, 一直都是對齊的.
 	cv::Mat imgTmp;
 	CRect rect;
 	pWnd->GetClientRect(&rect);
@@ -160,7 +155,7 @@ UINT CMFC_LDDlg::threadFun(LPVOID LParam)
 	switch (para->m_case)
 	{
 	case 0:
-		lpview->Thread_CapFromFile(LParam);
+		lpview->Thread_CapFromFile(LParam);//0號執行序做事
 		break;
 
 	default:
@@ -175,10 +170,12 @@ UINT CMFC_LDDlg::threadFun(LPVOID LParam)
 
 void CMFC_LDDlg::OnBnClickedBtnstart()
 {
+	/*開啟0號執行續*/
 	m_threadPara.m_case = 0;
 	m_threadPara.hWnd = m_hWnd;
 	m_lpThread = AfxBeginThread(&CMFC_LDDlg::threadFun, (LPVOID)&m_threadPara);
 }
+
 void CMFC_LDDlg::Thread_CapFromFile(LPVOID lParam)
 {
 	CthreadParam * Thread_Info = (CthreadParam *)lParam;
@@ -201,7 +198,6 @@ void CMFC_LDDlg::Thread_CapFromFile(LPVOID lParam)
 			frame = cvRetrieveFrame(cap);
 			frame_counter++;
 			Mat Img = frame;
-		
 			Mat Img_ROI = Img(cv::Rect(cv::Point(0, 450), cv::Point(1225, 610)));
 			Mat Img_Mask;
 			Mat Img_finalResult = Mat::zeros(Img_ROI.size(), CV_8UC3);
@@ -212,7 +208,7 @@ void CMFC_LDDlg::Thread_CapFromFile(LPVOID lParam)
 			for (int i = 0; i < contours.size(); i++) // Iterate through each contour
 			{
 				double Area = contourArea(contours[i], false);
-				if (Area > 250)
+				if (Area > 250)/*如果面積是250以下判斷為路邊雜訊*/
 				{
 					Mat temp = Mat::zeros(Img_Mask.size(), CV_8UC1);
 					drawContours(temp, contours, i, Scalar(255), CV_FILLED, 8, hierarchy);
@@ -223,7 +219,7 @@ void CMFC_LDDlg::Thread_CapFromFile(LPVOID lParam)
 					if (LineType != "false")
 					{
 						cvtColor(temp, Img_ColorMask, CV_GRAY2RGB);
-						bitwise_and(Img_ColorMask, Img_ROI, Img_ColorMask);
+						bitwise_and(Img_ColorMask, Img_ROI, Img_ColorMask);//利用ROI與車道線遮罩取得單一車道的顏色資訊
 						LineColor = GetColor(Img_ColorMask, flag_Night);
 					}
 					
@@ -231,7 +227,7 @@ void CMFC_LDDlg::Thread_CapFromFile(LPVOID lParam)
 					{
 						std::string L;
 						L = LineColor + " " + LineType;
-						bitwise_or(Img_ColorMask, Img_finalResult, Img_finalResult);
+						bitwise_or(Img_ColorMask, Img_finalResult, Img_finalResult);//將每一條偵測完的車道線結果疊加起來合成一張圖
 						ImgText(&(IplImage)Img_finalResult, L, center.x, center.y);
 					}	
 				}
@@ -255,11 +251,11 @@ void CMFC_LDDlg::FindLineMask(Mat src, Mat &dst) {
 	Mat edges;
 	Canny(img_blur, edges, 70, 150);
 	Mat Img_Line;
-	HoughLineDetection(edges, Img_Line);
+	HoughLineDetection(edges, Img_Line);//尋找霍夫線
 	LineCompensate(Img_Line, Img_Line, 35);
 	dst = Img_Line;
 }
-
+/*********NightMod****利用亮度判斷影片是否為夜間***********/
 bool CMFC_LDDlg::NightMod(cv::Mat img)
 {
 	Mat Img_gray;
@@ -275,6 +271,9 @@ bool CMFC_LDDlg::NightMod(cv::Mat img)
 	if (sum >= 100)return false;
 	if (sum < 100)return true;
 }
+
+
+/*******LineCompensate***將平行的線連接為實心的線*******thrshold為距離，目前設定為35個pixel***********/
 void CMFC_LDDlg::LineCompensate(cv::Mat src, cv::Mat &dst, uint16_t thrshold)
 {
 	clock_t t0 = clock();
@@ -303,6 +302,8 @@ void CMFC_LDDlg::LineCompensate(cv::Mat src, cv::Mat &dst, uint16_t thrshold)
 	float t = (float)(t2 - t0) / CLK_TCK;
 	
 }
+
+/*******LineClassify************利用線寬及線長判定雙線、單線、虛線、實線*****************/
 string CMFC_LDDlg::LineClassify(cv::Mat src, cv::Point Center, double Area)
 {
 	int LineWidth[2] = { 0 };
@@ -314,9 +315,9 @@ string CMFC_LDDlg::LineClassify(cv::Mat src, cv::Point Center, double Area)
 		if (src.at<uchar>(Center.y, src.cols - i) > 0 && src.at<uchar>(Center.y, src.cols - i + 1) == 0)//右往左掃←
 			LineWidth[1] = src.cols - i - 1;
 	}
-	if (abs(LineWidth[1] - LineWidth[0]) > 15 && abs(LineWidth[1] - LineWidth[0]) < 50)//單線
+	double Length = Area / (abs(LineWidth[1] - LineWidth[0]));
+	if (abs(LineWidth[1] - LineWidth[0]) > 15 && abs(LineWidth[1] - LineWidth[0]) < 48)//單線
 	{
-		double Length = Area / (abs(LineWidth[1] - LineWidth[0]));
 		if (Length > 35 && Length < 120)//虛線
 		{
 			return "dotted line";
@@ -329,7 +330,7 @@ string CMFC_LDDlg::LineClassify(cv::Mat src, cv::Point Center, double Area)
 		else
 		return "false";
 	}
-	else if (abs(LineWidth[1] - LineWidth[0])> 50 && abs(LineWidth[1] - LineWidth[0])<80 && Area>3000)//雙線
+	else if (abs(LineWidth[1] - LineWidth[0])>=48 && abs(LineWidth[1] - LineWidth[0])<80 && Length > 130 && Length < 180)//雙線
 	{
 		return "double Line";
 	}
@@ -337,9 +338,9 @@ string CMFC_LDDlg::LineClassify(cv::Mat src, cv::Point Center, double Area)
 		return "false";
 
 }
+//霍夫線偵測將+-20~+-60度的線擷取出來
 void CMFC_LDDlg::HoughLineDetection(cv::Mat src, cv::Mat &dst)
 {
-
 	vector<Vec4i> lines;
 	int hough_threshold = 10;
 	int hough_minLineLength = 60;
@@ -355,19 +356,22 @@ void CMFC_LDDlg::HoughLineDetection(cv::Mat src, cv::Mat &dst)
 		{
 			double theta = atan((double)(lines[i][3] - lines[i][1]) / (double)(lines[i][2] - lines[i][0]));
 			theta = theta * 180 / M_PI;
-			if (20 <= theta  && theta <= 60 && lines[i][0]> src.cols/2)//右邊
+			if (20 <= theta  && theta <= 60 && lines[i][0]>= src.cols/2)//右邊
 				cv::line(dst, cv::Point(lines[i][0], lines[i][1]), cv::Point(lines[i][2], lines[i][3]), Scalar(255));
-		    if (-20 >= theta  && theta >= -60 && lines[i][0]< src.cols / 2)//左邊
+		    if (-20 >= theta  && theta >= -60 && lines[i][0]<=src.cols / 2)//左邊
 				cv::line(dst, cv::Point(lines[i][0], lines[i][1]), cv::Point(lines[i][2], lines[i][3]), Scalar(255));
 		}
 	}
-
 	cvDilate(&(IplImage)dst, &(IplImage)dst, pKernel, 1);
 }
+
+
+/*******GetColor******RGB轉HSV對應到日間及夜間的閥值******************/
 std::string CMFC_LDDlg::GetColor(cv::Mat img,bool f_Night)
 {
 	Mat temp_w, temp_y, temp_r;
 	Mat Img_HSV;
+	cv::circle(img, cv::Point(0, 1), 1, CV_RGB(255, 0, 0));
 	cvtColor(img, Img_HSV, CV_RGB2HSV);
 	if (f_Night == false)
 	{
@@ -378,8 +382,8 @@ std::string CMFC_LDDlg::GetColor(cv::Mat img,bool f_Night)
 	if (f_Night)
 	{
 		inRange(Img_HSV, Scalar(0,0, 60), Scalar(170, 40, 255), temp_w);
-		inRange(Img_HSV, Scalar(130, 0, 150), Scalar(165, 20, 200), temp_r);
-		inRange(Img_HSV, Scalar(77, 30, 105), Scalar(105, 116, 252), temp_y);
+		
+		inRange(Img_HSV, Scalar(77, 16, 105), Scalar(117, 116, 252), temp_y);
 	}
 	std::vector<int>grade;
 	grade.push_back(cv::countNonZero(temp_w)); grade.push_back(cv::countNonZero(temp_r)); grade.push_back(cv::countNonZero(temp_y));
@@ -403,6 +407,7 @@ std::string CMFC_LDDlg::GetColor(cv::Mat img,bool f_Night)
 	else
 		return "false";
 }
+/*******ImgText*******將文字秀在圖上(可有可無)，因為沒有想到其他的呈現方式***/
 void CMFC_LDDlg::ImgText(IplImage* img, std::string text, int x, int y)
 {
 	CvFont font;
